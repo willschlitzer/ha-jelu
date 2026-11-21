@@ -23,6 +23,9 @@ async def test_user_flow(hass: HomeAssistant, mock_jelu: AiohttpClientMocker) ->
     )
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {}
+    assert result["description_placeholders"] == {
+        "example_url": "https://jelu.example.com"
+    }
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], USER_INPUT

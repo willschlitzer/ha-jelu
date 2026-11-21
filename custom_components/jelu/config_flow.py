@@ -107,6 +107,8 @@ class JeluConfigFlow(ConfigFlow, domain=DOMAIN):
             data_schema=self.add_suggested_values_to_schema(
                 STEP_USER_DATA_SCHEMA, user_input
             ),
+            # hassfest forbids URLs inside translation strings.
+            description_placeholders={"example_url": "https://jelu.example.com"},
             errors=errors,
         )
 
