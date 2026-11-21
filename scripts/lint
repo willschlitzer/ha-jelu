@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Check-only lint: never modifies files. Fix formatting with `uv run ruff format`.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+status=0
+echo "==> ruff format --check"; uv run ruff format --check . || status=1
+echo "==> ruff check";          uv run ruff check . || status=1
+echo "==> ty check";            uv run ty check || status=1
+exit "$status"

@@ -2,7 +2,7 @@
 # Runtime dependencies for users live in custom_components/jelu/manifest.json "requirements".
 [project]
 name = "ha-jelu"
-version = "0.0.0"
+version = "0.1.0"
 description = "Home Assistant integration for Jelu, a self-hosted book tracker."
 readme = "README.md"
 license = "MIT"
@@ -32,6 +32,14 @@ python-version = "3.14"
 
 [tool.ty.src]
 include = ["custom_components", "tests"]
+
+[tool.ty.rules]
+# Home Assistant's own entity pattern trips these: entities narrow `entity_description` to their
+# own description class, and override attributes such as `native_value` or
+# `extra_state_attributes` (declared as cached properties on Entity) with plain properties.
+# HA core does this throughout and mypy accepts it.
+incompatible-mutable-override = "ignore"
+incompatible-property-override = "ignore"
 
 # Based on Home Assistant core's ruff config (home-assistant/core dev, pyproject.toml),
 # with core-only entries removed.
@@ -175,7 +183,8 @@ mark-parentheses = false
 
 [tool.ruff.lint.isort]
 force-sort-within-sections = true
-known-first-party = ["custom_components"]
+known-first-party = ["homeassistant"]
+known-local-folder = ["custom_components"]
 combine-as-imports = true
 split-on-trailing-comma = false
 

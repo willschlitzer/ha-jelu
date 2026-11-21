@@ -1,0 +1,63 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "This Jelu server is already configured.",
+      "reauth_successful": "Re-authentication was successful."
+    },
+    "error": {
+      "cannot_connect": "Failed to connect. Check the URL and that Home Assistant can reach the server.",
+      "invalid_auth": "Jelu rejected the API token. It may be mistyped, expired or revoked.",
+      "invalid_url": "Enter a full URL starting with http:// or https://.",
+      "missing_scope": "The API token is valid but lacks permission. Create a token with the reading:read scope.",
+      "not_jelu": "The server answered, but not like a Jelu server. Check the URL.",
+      "unknown": "Unexpected error. Check the Home Assistant logs."
+    },
+    "step": {
+      "reauth_confirm": {
+        "data": {
+          "api_token": "API token"
+        },
+        "data_description": {
+          "api_token": "A new token for {url}, with the reading:read scope."
+        },
+        "description": "Jelu no longer accepts the API token for {url}. Enter a new one.",
+        "title": "Re-authenticate with Jelu"
+      },
+      "user": {
+        "data": {
+          "api_token": "API token",
+          "url": "URL",
+          "verify_ssl": "Verify SSL certificate"
+        },
+        "data_description": {
+          "api_token": "Create one in Jelu under Settings → API tokens, with the reading:read scope.",
+          "url": "The address you use to open Jelu, for example https://jelu.example.com.",
+          "verify_ssl": "Turn off only for a self-signed certificate."
+        },
+        "description": "Connect Home Assistant to your Jelu server.",
+        "title": "Connect to Jelu"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "currently_reading": {
+        "name": "Currently reading",
+        "unit_of_measurement": "books",
+        "state_attributes": {
+          "books": {
+            "name": "Books"
+          }
+        }
+      },
+      "finished_this_year": {
+        "name": "Finished this year",
+        "unit_of_measurement": "books"
+      },
+      "finished_total": {
+        "name": "Finished total",
+        "unit_of_measurement": "books"
+      }
+    }
+  }
+}

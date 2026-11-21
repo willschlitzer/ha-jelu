@@ -1,0 +1,15 @@
+{
+  "entity": {
+    "sensor": {
+      "currently_reading": {
+        "default": "mdi:book-open-page-variant"
+      },
+      "finished_this_year": {
+        "default": "mdi:book-check"
+      },
+      "finished_total": {
+        "default": "mdi:bookshelf"
+      }
+    }
+  }
+}
