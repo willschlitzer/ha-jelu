@@ -7,7 +7,7 @@
     "error": {
       "cannot_connect": "Failed to connect. Check the URL and that Home Assistant can reach the server.",
       "invalid_auth": "Jelu rejected the API token. It may be mistyped, expired or revoked.",
-      "invalid_url": "Enter a full URL starting with http:// or https://.",
+      "invalid_url": "Enter a full URL, including the http or https at the start.",
       "missing_scope": "The API token is valid but lacks permission. Create a token with the reading:read scope.",
       "not_jelu": "The server answered, but not like a Jelu server. Check the URL.",
       "unknown": "Unexpected error. Check the Home Assistant logs."
@@ -31,7 +31,7 @@
         },
         "data_description": {
           "api_token": "Create one in Jelu under Settings → API tokens, with the reading:read scope.",
-          "url": "The address you use to open Jelu, for example https://jelu.example.com.",
+          "url": "The address you use to open Jelu, for example {example_url}.",
           "verify_ssl": "Turn off only for a self-signed certificate."
         },
         "description": "Connect Home Assistant to your Jelu server.",

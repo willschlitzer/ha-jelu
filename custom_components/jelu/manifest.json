@@ -1,6 +1,9 @@
 {
   "domain": "jelu",
   "name": "Jelu",
+  "categories": [
+    "productivity_information"
+  ],
   "codeowners": [
     "@willschlitzer"
   ],
