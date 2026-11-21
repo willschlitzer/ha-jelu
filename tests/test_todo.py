@@ -1,4 +1,10 @@
-"""Tests for the Jelu "currently reading" to-do list."""
+"""Tests for the "Currently reading" to-do list (todo.py).
+
+The to-do list is used through HA's own todo actions, as the to-do card and Assist use it:
+todo.get_items to read the items, and todo.update_item to change one (checking it off sends
+status "completed"). The tests set up the integration with "Dune" and "Kindred" being read
+(mock_library in conftest.py).
+"""
 
 from typing import Any, cast
 
@@ -19,7 +25,11 @@ ENTITY_ID = "todo.jelu_currently_reading"
 
 @pytest.fixture(autouse=True)
 def _frozen_time(freezer: FrozenDateTimeFactory) -> None:
-    """Fix "this year" to 2026, to match the mocked queries."""
+    """Fix "this year" to 2026, to match the mocked queries.
+
+    mock_library answers the "finished this year" query only for endedAfter=2026-01-01, so
+    the clock must say 2026 whenever the tests run. autouse: applies to every test here.
+    """
     freezer.move_to("2026-11-20 12:00:00+00:00")
 
 
@@ -37,6 +47,7 @@ async def setup_entry(
 
 
 async def _get_items(hass: HomeAssistant) -> list[dict[str, Any]]:
+    """Read the list's items through HA's todo.get_items action."""
     result = await hass.services.async_call(
         TODO_DOMAIN,
         "get_items",
@@ -52,6 +63,7 @@ async def _get_items(hass: HomeAssistant) -> list[dict[str, Any]]:
 
 async def test_items(hass: HomeAssistant, setup_entry: MockConfigEntry) -> None:
     """Each book being read is an open item, with authors and progress as the description."""
+    # A to-do list's state is its number of open items.
     state = hass.states.get(ENTITY_ID)
     assert state is not None
     assert state.state == "2"
@@ -80,6 +92,7 @@ async def test_check_off_finishes_book(
     mock_library.post(f"{API}/reading-events", json={})
     calls_before = mock_library.call_count
 
+    # The item is picked by its summary (the title), as Assist would.
     await hass.services.async_call(
         TODO_DOMAIN,
         "update_item",
@@ -88,18 +101,19 @@ async def test_check_off_finishes_book(
         blocking=True,
     )
 
+    # One POST was sent, with this body (call[0] is the method, call[2] the body).
     writes = [call for call in mock_library.mock_calls if call[0] == "POST"]
     assert [call[2] for call in writes] == [
         {"eventType": "FINISHED", "bookId": "book-Dune"}
     ]
-    # A refresh followed the write.
+    # A refresh followed the write: more requests than just the one POST.
     assert mock_library.call_count > calls_before + 1
 
 
 async def test_rename_rejected(
     hass: HomeAssistant, setup_entry: MockConfigEntry
 ) -> None:
-    """Only checking off is supported."""
+    """Only checking off is supported; renaming is refused with an explanation."""
     with pytest.raises(ServiceValidationError) as err:
         await hass.services.async_call(
             TODO_DOMAIN,

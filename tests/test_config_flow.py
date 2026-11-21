@@ -1,4 +1,17 @@
-"""Tests for the Jelu config flow."""
+"""Tests for the setup dialogs (config_flow.py).
+
+A config flow is driven in tests the way the UI drives it:
+
+  result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": ...})
+      starts a flow and returns its first step (normally a form);
+  result = await hass.config_entries.flow.async_configure(result["flow_id"], user_input)
+      submits that form, as if the user pressed Submit, and returns what comes next.
+
+Each `result` is a dict. result["type"] says what happened: FORM (a form is shown, possibly
+with result["errors"]), CREATE_ENTRY (the integration was added) or ABORT (the flow ended,
+with result["reason"]). Reauth and reconfigure flows are started from the existing entry
+instead, with start_reauth_flow() / start_reconfigure_flow().
+"""
 
 from aiohttp import ClientError
 import pytest
@@ -13,6 +26,7 @@ from homeassistant.data_entry_flow import FlowResultType
 from .conftest import API, SERVER_SETTINGS, TOKEN, URL, events_page
 from custom_components.jelu.const import DOMAIN
 
+# What a user types into the form. The URL has a trailing slash, to check it gets tidied.
 USER_INPUT = {CONF_URL: f"{URL}/", CONF_API_TOKEN: TOKEN, CONF_VERIFY_SSL: True}
 
 
@@ -37,6 +51,7 @@ async def test_user_flow(hass: HomeAssistant, mock_jelu: AiohttpClientMocker) ->
         CONF_API_TOKEN: TOKEN,
         CONF_VERIFY_SSL: True,
     }
+    # result["result"] is the config entry that was created.
     assert result["result"].unique_id == URL
 
 
@@ -56,7 +71,11 @@ async def test_user_flow_errors(
     events_kwargs: dict,
     errors: dict[str, str],
 ) -> None:
-    """Failures show an error on the form, and the user can then retry."""
+    """Failures show an error on the form, and the user can then retry.
+
+    Runs once per row above: each row is how the fake server answers the two requests
+    (server settings, then reading events) and the form error that should result.
+    """
     aioclient_mock.get(f"{API}/server-settings", **settings_kwargs)
     aioclient_mock.get(f"{API}/reading-events/me", **events_kwargs)
     result = await hass.config_entries.flow.async_init(
@@ -68,6 +87,7 @@ async def test_user_flow_errors(
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == errors
 
+    # Now the server works: drop the failing fakes, register good ones, submit again.
     aioclient_mock.clear_requests()
     aioclient_mock.get(f"{API}/server-settings", json=SERVER_SETTINGS)
     aioclient_mock.get(f"{API}/reading-events/me", json=events_page())
@@ -93,7 +113,7 @@ async def test_user_flow_already_configured(
     hass: HomeAssistant, mock_jelu: AiohttpClientMocker, config_entry: MockConfigEntry
 ) -> None:
     """The same server can't be added twice, even with a different spelling."""
-    config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)  # the server is already configured
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
@@ -142,7 +162,10 @@ async def test_reauth_flow_bad_token(
 async def test_reconfigure(
     hass: HomeAssistant, mock_jelu: AiohttpClientMocker, config_entry: MockConfigEntry
 ) -> None:
-    """Reconfigure replaces the token and can change the URL."""
+    """Reconfigure replaces the token and can change the URL.
+
+    The entry moves to a new address, so the fake server needs answers there too.
+    """
     config_entry.add_to_hass(hass)
     result = await config_entry.start_reconfigure_flow(hass)
     assert result["type"] is FlowResultType.FORM
@@ -175,6 +198,7 @@ async def test_reconfigure_to_other_entry(
 ) -> None:
     """Reconfigure can't point one entry at a server another entry already uses."""
     config_entry.add_to_hass(hass)
+    # A second entry, for the server the first one is about to be moved to.
     MockConfigEntry(
         domain=DOMAIN,
         unique_id="https://books.example.com",

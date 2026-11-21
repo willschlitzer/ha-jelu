@@ -1,4 +1,9 @@
-"""Tests for the Jelu API client."""
+"""Tests for the Jelu API client (api.py).
+
+These test the client on its own: each test registers a fake response, calls one client
+method, and checks what it returned or raised, and what request it sent (from
+aioclient_mock.mock_calls). No integration is set up. See conftest.py for how the fakes work.
+"""
 
 from datetime import UTC, date, datetime
 
@@ -23,7 +28,10 @@ from custom_components.jelu.api import (
 
 @pytest.fixture
 def client(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) -> JeluClient:
-    """Return a client that uses Home Assistant's (mocked) session."""
+    """Return a client using HA's HTTP session, which aioclient_mock intercepts.
+
+    Requesting aioclient_mock here installs the fake before the session is created.
+    """
     return JeluClient(async_get_clientsession(hass), URL, TOKEN)
 
 
@@ -57,6 +65,7 @@ async def test_server_info_needs_no_token(
     aioclient_mock.get(f"{API}/server-settings", json={"appVersion": "0.88.4"})
     info = await client.async_get_server_info()
     assert info.app_version == "0.88.4"
+    # Each recorded call is (method, url, body, headers); only the headers matter here.
     _, _, _, headers = aioclient_mock.mock_calls[0]
     assert "Authorization" not in headers
 
@@ -68,7 +77,10 @@ async def test_server_info_needs_no_token(
 async def test_server_info_not_jelu(
     client: JeluClient, aioclient_mock: AiohttpClientMocker, kwargs: dict
 ) -> None:
-    """A server that doesn't answer like Jelu is reported as such."""
+    """A server that doesn't answer like Jelu is reported as such.
+
+    Runs twice: with an HTML page (not JSON) and with JSON that lacks appVersion.
+    """
     aioclient_mock.get(f"{API}/server-settings", **kwargs)
     with pytest.raises(JeluInvalidResponseError):
         await client.async_get_server_info()
@@ -91,12 +103,14 @@ async def test_reading_events(
     )
 
     assert page.total == 42
+    # Unpacking into a one-item list also asserts there is exactly one event.
     [event] = page.events
     assert event.title == "Dune"
     assert event.authors == ["Ursula K. Le Guin"]
     assert event.event_type is ReadingEventType.FINISHED
     assert event.end_date == datetime(2026, 3, 4, tzinfo=UTC)
 
+    # The request carried the token and the filters, with eventTypes repeated once per type.
     _, url, _, headers = aioclient_mock.mock_calls[0]
     assert headers["Authorization"] == f"Bearer {TOKEN}"
     assert url.query.getall("eventTypes") == ["FINISHED", "DROPPED"]
@@ -141,7 +155,11 @@ async def test_errors(
     mock_kwargs: dict,
     error: type[Exception],
 ) -> None:
-    """HTTP and network failures map to the client's errors."""
+    """HTTP and network failures map to the client's errors.
+
+    Runs once per row above: the fake either answers with that status, or raises that
+    exception (`exc=`) as a dropped connection or timeout would.
+    """
     aioclient_mock.get(f"{API}/reading-events/me", **mock_kwargs)
     with pytest.raises(error):
         await client.async_get_reading_events()
@@ -174,9 +192,13 @@ async def test_set_progress(
     kwargs: dict,
     body: dict,
 ) -> None:
-    """Progress is a PUT of one value, with the other sent as null."""
+    """Progress is a PUT of one value, with the other sent as null.
+
+    Both keys are always sent because Jelu overwrites both fields on every update.
+    """
     aioclient_mock.put(f"{API}/userbooks/userbook-Dune", json={})
     await client.async_set_progress("userbook-Dune", **kwargs)
+    # Exactly one request was made; `data` is the JSON body it sent.
     [(method, _, data, headers)] = aioclient_mock.mock_calls
     assert method == "PUT"
     assert data == body

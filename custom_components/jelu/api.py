@@ -1,10 +1,26 @@
 """Minimal async client for the Jelu REST API.
 
-Only the endpoints the integration needs. Jelu API tokens can only reach paths on the server's
-allow-list (security/TokenScope.kt). In Jelu 0.88.4 that excludes /users/me and /stats/**, so
-statistics are counted from /reading-events/me instead.
+This module knows nothing about Home Assistant: it takes an aiohttp session, a URL and a token,
+and returns plain Python objects or raises the Jelu* exceptions below. Keeping it separate
+means it could later become its own package (e.g. for inclusion in HA core).
 
-Reading needs the reading:read scope; changing progress or a book's status needs reading:write.
+Jelu's data model, as far as this client uses it:
+
+  book        A book in the library: title, authors, page count. Shared by all users.
+  user book   One user's copy of a book: their progress (current page, percent read),
+              notes, owned/borrowed and so on. Progress is updated here.
+  reading     One read-through of a user book, with a type (CURRENTLY_READING, FINISHED,
+  event       DROPPED) and start/end dates. Starting a book opens a CURRENTLY_READING event;
+              finishing or dropping it changes that event's type and sets its end date.
+              Rereading starts a new event, which is why a reread counts as another finish.
+
+So "the books I'm reading" means "my CURRENTLY_READING reading events", and the counts are
+counts of reading events.
+
+Access: Jelu API tokens can only reach paths on the server's allow-list (TokenScope.kt in
+Jelu). In Jelu 0.88.4 that excludes /users/me and /stats/**, so statistics are counted from
+/reading-events/me instead. Reading needs the reading:read scope; changing progress or a
+book's status needs reading:write.
 """
 
 import asyncio
@@ -22,8 +38,12 @@ API_PATH = "/api/v1"
 REQUEST_TIMEOUT = 15
 
 
+# Errors. The callers (config flow, coordinator) catch these and decide what the user sees,
+# so each kind of failure gets its own class.
+
+
 class JeluError(Exception):
-    """Base error for the Jelu client."""
+    """Base error for the Jelu client. Catch this to handle any of the ones below."""
 
 
 class JeluConnectionError(JeluError):
@@ -62,16 +82,22 @@ class ServerInfo:
 
 @dataclass(frozen=True, slots=True)
 class ReadingEvent:
-    """One reading event and the book it belongs to."""
+    """One reading event, flattened together with its user book and book.
 
-    id: str
+    Jelu returns these nested (event → userBook → book); _parse_event() at the bottom of this
+    file picks out the fields used here.
+    """
+
+    id: str  # the reading event's ID
     event_type: ReadingEventType
-    book_id: str
-    user_book_id: str
+    book_id: str  # the book's ID: used to finish or drop it
+    user_book_id: str  # the user book's ID: used to set progress
     title: str
     authors: list[str]
     start_date: datetime | None
-    end_date: datetime | None
+    end_date: datetime | None  # None while the book is still being read
+    # Progress, from the user book. Any of these can be missing, e.g. a book with no known
+    # page count only has a percentage.
     percent_read: int | None
     current_page: int | None
     page_count: int | None
@@ -83,6 +109,9 @@ class ReadingEventPage:
 
     events: list[ReadingEvent]
     total: int
+
+
+# Helpers and the client itself.
 
 
 def normalize_url(url: str) -> str:
@@ -105,8 +134,12 @@ class JeluClient:
 
     def __init__(self, session: ClientSession, url: str, token: str) -> None:
         """Set up the client. `url` is the server's base URL, as given by normalize_url."""
-        self._session = session
-        self._api = URL(normalize_url(url) + API_PATH)
+        self._session = (
+            session  # created by session.py; the client doesn't own or close it
+        )
+        self._api = URL(
+            normalize_url(url) + API_PATH
+        )  # e.g. https://jelu.example.com/api/v1
         self._token = token
 
     async def _request(
@@ -118,11 +151,18 @@ class JeluClient:
         json: dict[str, Any] | None = None,
         auth: bool = True,
     ) -> Any:
-        """Call an API path and return the decoded JSON body."""
+        """Call an API path and return the decoded JSON body.
+
+        Every request goes through here, so this is the one place that turns HTTP status
+        codes and network errors into the exceptions above. `path` is relative to /api/v1;
+        `params` become the query string, `json` the request body. `auth=False` leaves out
+        the token, for the one endpoint that doesn't need it.
+        """
         headers = {"Accept": "application/json"}
         if auth:
             headers["Authorization"] = f"Bearer {self._token}"
         try:
+            # Give up after REQUEST_TIMEOUT seconds, rather than waiting on a hung server.
             async with (
                 asyncio.timeout(REQUEST_TIMEOUT),
                 self._session.request(
@@ -133,6 +173,7 @@ class JeluClient:
                     headers=headers,
                 ) as response,
             ):
+                # 401: no valid token. 403: valid token, but not allowed here (missing scope).
                 if response.status == HTTPStatus.UNAUTHORIZED:
                     raise JeluAuthenticationError("Jelu rejected the API token")
                 if response.status == HTTPStatus.FORBIDDEN:
@@ -147,6 +188,7 @@ class JeluClient:
                     raise JeluInvalidResponseError(
                         f"Response from {path} is not JSON"
                     ) from err
+        # The status checks above raise Jelu* errors, which pass straight through these.
         except TimeoutError as err:
             raise JeluConnectionError(f"Timed out calling {path}") from err
         except ClientError as err:
@@ -171,11 +213,15 @@ class JeluClient:
 
         Needs the reading:read scope.
         """
+        # A list of pairs rather than a dict, because eventTypes may repeat:
+        # ?eventTypes=FINISHED&eventTypes=DROPPED
         params = [("eventTypes", event_type.value) for event_type in event_types]
         if ended_after is not None:
             params.append(("endedAfter", ended_after.isoformat()))
         params += [("page", str(page)), ("size", str(size))]
         data = await self._request("GET", "/reading-events/me", params)
+        # Jelu returns a "page": {"content": [the events], "totalElements": total matching,
+        # ...}. Any missing or malformed field means this isn't the reply we expect.
         try:
             return ReadingEventPage(
                 events=[_parse_event(item) for item in data["content"]],
@@ -192,7 +238,11 @@ class JeluClient:
         *,
         ended_after: date | None = None,
     ) -> int:
-        """Count matching reading events, fetching a single item."""
+        """Count matching reading events.
+
+        Jelu reports the total number of matches with every page, so asking for a one-item
+        page is a cheap way to count.
+        """
         result = await self.async_get_reading_events(
             event_types, ended_after=ended_after, size=1
         )
@@ -238,17 +288,27 @@ class JeluClient:
         )
 
     async def async_validate(self) -> ServerInfo:
-        """Check that the URL is a Jelu server and the token can read reading events."""
+        """Check that the URL is a Jelu server and the token can read reading events.
+
+        Used by the config flow before saving anything. The first call needs no token, so a
+        failure there means a wrong URL; a failure on the second means a token problem.
+        """
         info = await self.async_get_server_info()
         await self.async_get_reading_events(size=1)
         return info
 
 
 def _parse_datetime(value: str | None) -> datetime | None:
+    """Parse Jelu's ISO 8601 timestamps, e.g. "2026-06-17T00:00:00-04:00"."""
     return datetime.fromisoformat(value) if value else None
 
 
 def _parse_event(item: dict[str, Any]) -> ReadingEvent:
+    """Turn one reading event from Jelu's JSON into a ReadingEvent.
+
+    Required fields use item["..."], so a missing one raises KeyError (reported by the
+    caller as an invalid response). Optional ones use .get(), which gives None.
+    """
     user_book = item["userBook"]
     book = user_book["book"]
     return ReadingEvent(
