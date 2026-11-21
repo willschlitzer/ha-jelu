@@ -2,7 +2,7 @@
 # Runtime dependencies for users live in custom_components/jelu/manifest.json "requirements".
 [project]
 name = "ha-jelu"
-version = "0.1.0"
+version = "0.2.0"
 description = "Home Assistant integration for Jelu, a self-hosted book tracker."
 readme = "README.md"
 license = "MIT"

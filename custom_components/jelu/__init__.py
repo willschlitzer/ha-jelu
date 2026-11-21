@@ -2,12 +2,24 @@
 
 from homeassistant.const import CONF_API_TOKEN, CONF_URL, CONF_VERIFY_SSL, Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.typing import ConfigType
 
 from .api import JeluClient
+from .const import DOMAIN
 from .coordinator import JeluConfigEntry, JeluDataUpdateCoordinator
+from .services import async_setup_services
 from .session import async_create_jelu_session
 
-PLATFORMS: list[Platform] = [Platform.SENSOR]
+PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.TODO]
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Register the Jelu actions (once, not per config entry)."""
+    async_setup_services(hass)
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: JeluConfigEntry) -> bool:

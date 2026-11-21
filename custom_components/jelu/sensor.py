@@ -9,14 +9,11 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import CONF_URL
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
 from .coordinator import JeluConfigEntry, JeluData, JeluDataUpdateCoordinator
+from .entity import JeluEntity
 
 # Read-only coordinator entities: let the coordinator decide when to update.
 PARALLEL_UPDATES = 0
@@ -33,6 +30,7 @@ def _currently_reading_attributes(data: JeluData) -> dict[str, Any]:
                 "started": event.start_date.date().isoformat()
                 if event.start_date
                 else None,
+                "percent": event.percent_read,
             }
             for event in data.currently_reading
         ]
@@ -81,11 +79,10 @@ async def async_setup_entry(
     async_add_entities(JeluSensor(coordinator, description) for description in SENSORS)
 
 
-class JeluSensor(CoordinatorEntity[JeluDataUpdateCoordinator], SensorEntity):
+class JeluSensor(JeluEntity, SensorEntity):
     """A count from Jelu."""
 
     entity_description: JeluSensorEntityDescription
-    _attr_has_entity_name = True
     # The book list can be long; keep it out of the recorder database.
     _unrecorded_attributes = frozenset({ATTR_BOOKS})
 
@@ -95,17 +92,8 @@ class JeluSensor(CoordinatorEntity[JeluDataUpdateCoordinator], SensorEntity):
         description: JeluSensorEntityDescription,
     ) -> None:
         """Set up the sensor."""
-        super().__init__(coordinator)
+        super().__init__(coordinator, description.key)
         self.entity_description = description
-        entry = coordinator.config_entry
-        self._attr_unique_id = f"{entry.entry_id}_{description.key}"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry.entry_id)},
-            name="Jelu",
-            entry_type=DeviceEntryType.SERVICE,
-            configuration_url=entry.data[CONF_URL],
-            sw_version=coordinator.data.app_version,
-        )
 
     @property
     def native_value(self) -> int:

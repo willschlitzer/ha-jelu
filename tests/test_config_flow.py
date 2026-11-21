@@ -137,3 +137,79 @@ async def test_reauth_flow_bad_token(
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {CONF_API_TOKEN: "invalid_auth"}
     assert config_entry.data[CONF_API_TOKEN] == TOKEN
+
+
+async def test_reconfigure(
+    hass: HomeAssistant, mock_jelu: AiohttpClientMocker, config_entry: MockConfigEntry
+) -> None:
+    """Reconfigure replaces the token and can change the URL."""
+    config_entry.add_to_hass(hass)
+    result = await config_entry.start_reconfigure_flow(hass)
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "reconfigure"
+
+    mock_jelu.get(
+        "https://books.example.com/api/v1/server-settings", json=SERVER_SETTINGS
+    )
+    mock_jelu.get(
+        "https://books.example.com/api/v1/reading-events/me", json=events_page()
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_URL: "https://books.example.com/",
+            CONF_API_TOKEN: "jelu_write_token",
+            CONF_VERIFY_SSL: True,
+        },
+    )
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    assert config_entry.data[CONF_API_TOKEN] == "jelu_write_token"
+    assert config_entry.data[CONF_URL] == "https://books.example.com"
+    assert config_entry.unique_id == "https://books.example.com"
+    assert config_entry.title == "books.example.com"
+
+
+async def test_reconfigure_to_other_entry(
+    hass: HomeAssistant, mock_jelu: AiohttpClientMocker, config_entry: MockConfigEntry
+) -> None:
+    """Reconfigure can't point one entry at a server another entry already uses."""
+    config_entry.add_to_hass(hass)
+    MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="https://books.example.com",
+        data={
+            CONF_URL: "https://books.example.com",
+            CONF_API_TOKEN: "x",
+            CONF_VERIFY_SSL: True,
+        },
+    ).add_to_hass(hass)
+    result = await config_entry.start_reconfigure_flow(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_URL: "https://books.example.com",
+            CONF_API_TOKEN: TOKEN,
+            CONF_VERIFY_SSL: True,
+        },
+    )
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "already_configured"
+
+
+async def test_reconfigure_bad_token(
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    config_entry: MockConfigEntry,
+) -> None:
+    """A rejected token keeps the form open and the old settings."""
+    config_entry.add_to_hass(hass)
+    aioclient_mock.get(f"{API}/server-settings", json=SERVER_SETTINGS)
+    aioclient_mock.get(f"{API}/reading-events/me", status=401)
+    result = await config_entry.start_reconfigure_flow(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {**USER_INPUT, CONF_API_TOKEN: "jelu_wrong"}
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {CONF_API_TOKEN: "invalid_auth"}
+    assert config_entry.data[CONF_API_TOKEN] == TOKEN

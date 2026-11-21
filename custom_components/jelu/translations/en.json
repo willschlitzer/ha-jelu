@@ -2,7 +2,8 @@
   "config": {
     "abort": {
       "already_configured": "This Jelu server is already configured.",
-      "reauth_successful": "Re-authentication was successful."
+      "reauth_successful": "Re-authentication was successful.",
+      "reconfigure_successful": "Re-configuration was successful."
     },
     "error": {
       "cannot_connect": "Failed to connect. Check the URL and that Home Assistant can reach the server.",
@@ -18,7 +19,7 @@
           "api_token": "API token"
         },
         "data_description": {
-          "api_token": "A new token for {url}, with the reading:read scope."
+          "api_token": "A new token for {url}, with the reading:read scope (and reading:write for the to-do list and actions)."
         },
         "description": "Jelu no longer accepts the API token for {url}. Enter a new one.",
         "title": "Re-authenticate with Jelu"
@@ -30,12 +31,26 @@
           "verify_ssl": "Verify SSL certificate"
         },
         "data_description": {
-          "api_token": "Create one in Jelu under Settings → API tokens, with the reading:read scope.",
+          "api_token": "Create one in Jelu under Settings → API tokens. Sensors need the reading:read scope; the to-do list and actions also need reading:write.",
           "url": "The address you use to open Jelu, for example {example_url}.",
           "verify_ssl": "Turn off only for a self-signed certificate."
         },
         "description": "Connect Home Assistant to your Jelu server.",
         "title": "Connect to Jelu"
+      },
+      "reconfigure": {
+        "title": "Reconfigure Jelu",
+        "description": "Change the server address or API token, for example to use a token that can make changes.",
+        "data": {
+          "api_token": "API token",
+          "url": "URL",
+          "verify_ssl": "Verify SSL certificate"
+        },
+        "data_description": {
+          "api_token": "Create one in Jelu under Settings → API tokens. Sensors need the reading:read scope; the to-do list and actions also need reading:write.",
+          "url": "The address you use to open Jelu, for example {example_url}.",
+          "verify_ssl": "Turn off only for a self-signed certificate."
+        }
       }
     }
   },
@@ -57,6 +72,86 @@
       "finished_total": {
         "name": "Finished total",
         "unit_of_measurement": "books"
+      }
+    },
+    "todo": {
+      "currently_reading": {
+        "name": "Currently reading"
+      }
+    }
+  },
+  "exceptions": {
+    "auth_failed": {
+      "message": "Jelu rejected the API token. Re-authenticate the Jelu integration."
+    },
+    "book_ambiguous": {
+      "message": "\"{book}\" matches more than one book being read: {books}. Use more of the title."
+    },
+    "book_not_found": {
+      "message": "No book matching \"{book}\" is being read. Currently reading: {books}."
+    },
+    "communication_error": {
+      "message": "Could not update Jelu: {error}"
+    },
+    "missing_write_scope": {
+      "message": "The Jelu API token can't make changes. Create a token with the reading:write scope, then use Reconfigure on the Jelu integration."
+    },
+    "page_or_percent": {
+      "message": "Give either a page or a percentage, not both and not neither."
+    },
+    "todo_only_complete": {
+      "message": "Books can only be checked off here, which marks them finished. Make other changes in Jelu."
+    }
+  },
+  "services": {
+    "drop_book": {
+      "name": "Drop book",
+      "description": "Marks a book you're reading as dropped in Jelu, keeping its progress.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Jelu server",
+          "description": "The Jelu server to use. Optional if you have only one."
+        },
+        "book": {
+          "name": "Book",
+          "description": "Title (or part of it) of a book you're reading, or its Jelu ID."
+        }
+      }
+    },
+    "finish_book": {
+      "name": "Finish book",
+      "description": "Marks a book you're reading as finished in Jelu, as of now.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Jelu server",
+          "description": "The Jelu server to use. Optional if you have only one."
+        },
+        "book": {
+          "name": "Book",
+          "description": "Title (or part of it) of a book you're reading, or its Jelu ID."
+        }
+      }
+    },
+    "set_progress": {
+      "name": "Set reading progress",
+      "description": "Sets how far you are through a book you're reading. Reaching the last page or 100% marks it finished.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Jelu server",
+          "description": "The Jelu server to use. Optional if you have only one."
+        },
+        "book": {
+          "name": "Book",
+          "description": "Title (or part of it) of a book you're reading, or its Jelu ID."
+        },
+        "page": {
+          "name": "Page",
+          "description": "The page you're on. Give this or a percentage."
+        },
+        "percent": {
+          "name": "Percentage",
+          "description": "How far through the book you are. Give this or a page."
+        }
       }
     }
   }

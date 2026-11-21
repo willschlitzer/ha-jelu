@@ -27,6 +27,10 @@ def reading_event(
     title: str = "The Left Hand of Darkness",
     event_type: str = "CURRENTLY_READING",
     end_date: str | None = None,
+    *,
+    percent: int | None = None,
+    page: int | None = None,
+    page_count: int | None = None,
 ) -> dict[str, Any]:
     """Build a reading event shaped like Jelu's ReadingEventDto (trimmed)."""
     return {
@@ -37,9 +41,12 @@ def reading_event(
         "userBook": {
             "id": f"userbook-{title}",
             "user": {"id": "user-1", "login": "reader"},
+            "percentRead": percent,
+            "currentPageNumber": page,
             "book": {
                 "id": f"book-{title}",
                 "title": title,
+                "pageCount": page_count,
                 "authors": [{"id": "author-1", "name": "Ursula K. Le Guin"}],
             },
         },
@@ -94,7 +101,10 @@ def mock_library(aioclient_mock: AiohttpClientMocker) -> AiohttpClientMocker:
     aioclient_mock.get(f"{API}/server-settings", json=SERVER_SETTINGS)
     aioclient_mock.get(
         f"{API}/reading-events/me?eventTypes=CURRENTLY_READING",
-        json=events_page(reading_event("Dune"), reading_event("Kindred")),
+        json=events_page(
+            reading_event("Dune", percent=45, page=270, page_count=600),
+            reading_event("Kindred"),
+        ),
     )
     aioclient_mock.get(
         f"{API}/reading-events/me?eventTypes=FINISHED&endedAfter=2026-01-01",

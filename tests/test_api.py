@@ -145,3 +145,71 @@ async def test_errors(
     aioclient_mock.get(f"{API}/reading-events/me", **mock_kwargs)
     with pytest.raises(error):
         await client.async_get_reading_events()
+
+
+async def test_reading_event_progress_fields(
+    client: JeluClient, aioclient_mock: AiohttpClientMocker
+) -> None:
+    """Progress and IDs needed for writes are parsed from the event."""
+    aioclient_mock.get(
+        f"{API}/reading-events/me",
+        json=events_page(reading_event("Dune", percent=45, page=270, page_count=600)),
+    )
+    [event] = (await client.async_get_reading_events()).events
+    assert event.user_book_id == "userbook-Dune"
+    assert event.book_id == "book-Dune"
+    assert (event.percent_read, event.current_page, event.page_count) == (45, 270, 600)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "body"),
+    [
+        ({"page": 120}, {"currentPageNumber": 120, "percentRead": None}),
+        ({"percent": 40}, {"currentPageNumber": None, "percentRead": 40}),
+    ],
+)
+async def test_set_progress(
+    client: JeluClient,
+    aioclient_mock: AiohttpClientMocker,
+    kwargs: dict,
+    body: dict,
+) -> None:
+    """Progress is a PUT of one value, with the other sent as null."""
+    aioclient_mock.put(f"{API}/userbooks/userbook-Dune", json={})
+    await client.async_set_progress("userbook-Dune", **kwargs)
+    [(method, _, data, headers)] = aioclient_mock.mock_calls
+    assert method == "PUT"
+    assert data == body
+    assert headers["Authorization"] == f"Bearer {TOKEN}"
+
+
+@pytest.mark.parametrize("kwargs", [{}, {"page": 1, "percent": 1}])
+async def test_set_progress_needs_exactly_one(client: JeluClient, kwargs: dict) -> None:
+    """Page and percent are mutually exclusive, and one is required."""
+    with pytest.raises(ValueError):
+        await client.async_set_progress("userbook-Dune", **kwargs)
+
+
+@pytest.mark.parametrize(
+    "event_type", [ReadingEventType.FINISHED, ReadingEventType.DROPPED]
+)
+async def test_set_reading_status(
+    client: JeluClient,
+    aioclient_mock: AiohttpClientMocker,
+    event_type: ReadingEventType,
+) -> None:
+    """Finishing or dropping posts a new reading event for the book."""
+    aioclient_mock.post(f"{API}/reading-events", json={})
+    await client.async_set_reading_status("book-Dune", event_type)
+    [(method, _, data, _)] = aioclient_mock.mock_calls
+    assert method == "POST"
+    assert data == {"eventType": event_type.value, "bookId": "book-Dune"}
+
+
+async def test_write_without_scope(
+    client: JeluClient, aioclient_mock: AiohttpClientMocker
+) -> None:
+    """A read-only token gets 403 on writes."""
+    aioclient_mock.post(f"{API}/reading-events", status=403)
+    with pytest.raises(JeluPermissionError):
+        await client.async_set_reading_status("book-Dune", ReadingEventType.FINISHED)

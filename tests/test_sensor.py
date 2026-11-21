@@ -41,8 +41,18 @@ async def test_sensors(
     assert reading.attributes["unit_of_measurement"] == "books"
     assert reading.attributes["state_class"] == "measurement"
     assert reading.attributes["books"] == [
-        {"title": "Dune", "authors": ["Ursula K. Le Guin"], "started": "2026-11-01"},
-        {"title": "Kindred", "authors": ["Ursula K. Le Guin"], "started": "2026-11-01"},
+        {
+            "title": "Dune",
+            "authors": ["Ursula K. Le Guin"],
+            "started": "2026-11-01",
+            "percent": 45,
+        },
+        {
+            "title": "Kindred",
+            "authors": ["Ursula K. Le Guin"],
+            "started": "2026-11-01",
+            "percent": None,
+        },
     ]
 
     this_year = hass.states.get("sensor.jelu_finished_this_year")
@@ -79,6 +89,7 @@ async def test_device_and_unique_ids(
         f"{config_entry.entry_id}_currently_reading",
         f"{config_entry.entry_id}_finished_this_year",
         f"{config_entry.entry_id}_finished_total",
+        f"{config_entry.entry_id}_currently_reading_todo",
     }
     assert all(entity.device_id == device.id for entity in entities)
 

@@ -1,0 +1,48 @@
+set_progress:
+  fields:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: jelu
+    book:
+      required: true
+      example: "Iron Gold"
+      selector:
+        text:
+    page:
+      selector:
+        number:
+          min: 0
+          max: 10000
+          mode: box
+    percent:
+      selector:
+        number:
+          min: 0
+          max: 100
+          unit_of_measurement: "%"
+          mode: slider
+
+finish_book:
+  fields:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: jelu
+    book:
+      required: true
+      example: "Iron Gold"
+      selector:
+        text:
+
+drop_book:
+  fields:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: jelu
+    book:
+      required: true
+      example: "Iron Gold"
+      selector:
+        text:

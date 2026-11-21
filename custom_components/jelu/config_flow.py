@@ -138,3 +138,46 @@ class JeluConfigFlow(ConfigFlow, domain=DOMAIN):
             description_placeholders={CONF_URL: entry.data[CONF_URL]},
             errors=errors,
         )
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Change the URL, token or SSL setting, e.g. to use a token that can write."""
+        errors: dict[str, str] = {}
+        entry = self._get_reconfigure_entry()
+        if user_input is not None:
+            try:
+                url = normalize_url(user_input[CONF_URL])
+            except ValueError:
+                errors[CONF_URL] = "invalid_url"
+            else:
+                user_input = {**user_input, CONF_URL: url}
+                if any(
+                    other.unique_id == url.lower()
+                    for other in self._async_current_entries(include_ignore=False)
+                    if other.entry_id != entry.entry_id
+                ):
+                    return self.async_abort(reason="already_configured")
+                info, errors = await _async_validate(self.hass, user_input)
+                if info is not None:
+                    return self.async_update_reload_and_abort(
+                        entry,
+                        unique_id=url.lower(),
+                        title=_entry_title(url),
+                        data=user_input,
+                    )
+
+        # Pre-fill everything but the token, which has to be entered again.
+        suggested = {
+            CONF_URL: entry.data[CONF_URL],
+            CONF_VERIFY_SSL: entry.data[CONF_VERIFY_SSL],
+            **{k: v for k, v in (user_input or {}).items() if k != CONF_API_TOKEN},
+        }
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=self.add_suggested_values_to_schema(
+                STEP_USER_DATA_SCHEMA, suggested
+            ),
+            description_placeholders={"example_url": "https://jelu.example.com"},
+            errors=errors,
+        )

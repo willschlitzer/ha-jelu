@@ -1,13 +1,18 @@
 """Data update coordinator for the Jelu integration."""
 
 import asyncio
+from collections.abc import Awaitable
 from dataclasses import dataclass
 from datetime import date
 import logging
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.exceptions import (
+    ConfigEntryAuthFailed,
+    HomeAssistantError,
+    ServiceValidationError,
+)
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 import homeassistant.util.dt as dt_util
 
@@ -86,3 +91,78 @@ class JeluDataUpdateCoordinator(DataUpdateCoordinator[JeluData]):
             finished_this_year=finished_this_year,
             finished_total=finished_total,
         )
+
+    def find_book(self, query: str) -> ReadingEvent:
+        """Find a book being read by title (exact, then partial) or by Jelu ID.
+
+        Raises ServiceValidationError if nothing or more than one book matches.
+        """
+        books = self.data.currently_reading
+        wanted = query.strip().casefold()
+        for book in books:
+            if wanted in (
+                book.title.casefold(),
+                book.book_id.casefold(),
+                book.user_book_id.casefold(),
+            ):
+                return book
+        matches = [book for book in books if wanted in book.title.casefold()]
+        if len(matches) == 1:
+            return matches[0]
+        if not matches:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="book_not_found",
+                translation_placeholders={
+                    "book": query,
+                    "books": _titles(books) or "none",
+                },
+            )
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="book_ambiguous",
+            translation_placeholders={"book": query, "books": _titles(matches)},
+        )
+
+    async def async_set_progress(
+        self, book: ReadingEvent, *, page: int | None, percent: int | None
+    ) -> None:
+        """Set a book's progress in Jelu, then refresh."""
+        await self._async_write(
+            self.client.async_set_progress(
+                book.user_book_id, page=page, percent=percent
+            )
+        )
+
+    async def async_set_reading_status(
+        self, book: ReadingEvent, event_type: ReadingEventType
+    ) -> None:
+        """Mark a book finished or dropped in Jelu, then refresh."""
+        await self._async_write(
+            self.client.async_set_reading_status(book.book_id, event_type)
+        )
+
+    async def _async_write(self, request: Awaitable[None]) -> None:
+        """Run a write request, turning client errors into Home Assistant errors."""
+        try:
+            await request
+        except JeluPermissionError as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN, translation_key="missing_write_scope"
+            ) from err
+        except JeluAuthenticationError as err:
+            self.config_entry.async_start_reauth(self.hass)
+            raise HomeAssistantError(
+                translation_domain=DOMAIN, translation_key="auth_failed"
+            ) from err
+        except JeluError as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="communication_error",
+                translation_placeholders={"error": str(err)},
+            ) from err
+        await self.async_request_refresh()
+
+
+def _titles(books: list[ReadingEvent]) -> str:
+    return ", ".join(book.title for book in books)

@@ -10,6 +10,22 @@
       "finished_total": {
         "default": "mdi:bookshelf"
       }
+    },
+    "todo": {
+      "currently_reading": {
+        "default": "mdi:book-open-page-variant"
+      }
+    }
+  },
+  "services": {
+    "drop_book": {
+      "service": "mdi:book-remove"
+    },
+    "finish_book": {
+      "service": "mdi:book-check"
+    },
+    "set_progress": {
+      "service": "mdi:book-clock"
     }
   }
 }

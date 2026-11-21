@@ -3,6 +3,8 @@
 Only the endpoints the integration needs. Jelu API tokens can only reach paths on the server's
 allow-list (security/TokenScope.kt). In Jelu 0.88.4 that excludes /users/me and /stats/**, so
 statistics are counted from /reading-events/me instead.
+
+Reading needs the reading:read scope; changing progress or a book's status needs reading:write.
 """
 
 import asyncio
@@ -39,7 +41,7 @@ class JeluAuthenticationError(JeluError):
 class JeluPermissionError(JeluError):
     """The token is valid but may not call this endpoint (HTTP 403).
 
-    Usually a missing scope, such as reading:read.
+    Usually a missing scope, such as reading:read or reading:write.
     """
 
 
@@ -65,10 +67,14 @@ class ReadingEvent:
     id: str
     event_type: ReadingEventType
     book_id: str
+    user_book_id: str
     title: str
     authors: list[str]
     start_date: datetime | None
     end_date: datetime | None
+    percent_read: int | None
+    current_page: int | None
+    page_count: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,23 +109,27 @@ class JeluClient:
         self._api = URL(normalize_url(url) + API_PATH)
         self._token = token
 
-    async def _get(
+    async def _request(
         self,
+        method: str,
         path: str,
         params: Iterable[tuple[str, str]] = (),
         *,
+        json: dict[str, Any] | None = None,
         auth: bool = True,
     ) -> Any:
-        """GET an API path and return the decoded JSON body."""
+        """Call an API path and return the decoded JSON body."""
         headers = {"Accept": "application/json"}
         if auth:
             headers["Authorization"] = f"Bearer {self._token}"
         try:
             async with (
                 asyncio.timeout(REQUEST_TIMEOUT),
-                self._session.get(
+                self._session.request(
+                    method,
                     self._api.with_path(self._api.path + path),
                     params=list(params),
+                    json=json,
                     headers=headers,
                 ) as response,
             ):
@@ -144,7 +154,7 @@ class JeluClient:
 
     async def async_get_server_info(self) -> ServerInfo:
         """Return public server info. Needs no token."""
-        data = await self._get("/server-settings", auth=False)
+        data = await self._request("GET", "/server-settings", auth=False)
         if not isinstance(data, dict) or not isinstance(data.get("appVersion"), str):
             raise JeluInvalidResponseError("No appVersion in /server-settings")
         return ServerInfo(app_version=data["appVersion"])
@@ -165,7 +175,7 @@ class JeluClient:
         if ended_after is not None:
             params.append(("endedAfter", ended_after.isoformat()))
         params += [("page", str(page)), ("size", str(size))]
-        data = await self._get("/reading-events/me", params)
+        data = await self._request("GET", "/reading-events/me", params)
         try:
             return ReadingEventPage(
                 events=[_parse_event(item) for item in data["content"]],
@@ -188,6 +198,45 @@ class JeluClient:
         )
         return result.total
 
+    async def async_set_progress(
+        self,
+        user_book_id: str,
+        *,
+        page: int | None = None,
+        percent: int | None = None,
+    ) -> None:
+        """Set reading progress for one of the user's books. Needs reading:write.
+
+        Give exactly one of `page` or `percent`. If the book has a page count, Jelu works out the
+        other value; if not, the other value is cleared. Reaching 100% or the last page makes
+        Jelu mark the book finished.
+
+        PUT /userbooks/{id} always overwrites both progress fields (other fields are only changed
+        when given), so the one not being set is sent as null on purpose.
+        """
+        if (page is None) == (percent is None):
+            raise ValueError("Give exactly one of page or percent")
+        await self._request(
+            "PUT",
+            f"/userbooks/{user_book_id}",
+            json={"currentPageNumber": page, "percentRead": percent},
+        )
+
+    async def async_set_reading_status(
+        self, book_id: str, event_type: ReadingEventType
+    ) -> None:
+        """Mark a book finished or dropped (or started) as of now. Needs reading:write.
+
+        This is what Jelu's own UI does: the book's open CURRENTLY_READING event is converted to
+        the new type and ended now, rather than a second event being created. FINISHED also sets
+        progress to 100%; DROPPED keeps the current progress.
+        """
+        await self._request(
+            "POST",
+            "/reading-events",
+            json={"eventType": event_type.value, "bookId": book_id},
+        )
+
     async def async_validate(self) -> ServerInfo:
         """Check that the URL is a Jelu server and the token can read reading events."""
         info = await self.async_get_server_info()
@@ -200,13 +249,18 @@ def _parse_datetime(value: str | None) -> datetime | None:
 
 
 def _parse_event(item: dict[str, Any]) -> ReadingEvent:
-    book = item["userBook"]["book"]
+    user_book = item["userBook"]
+    book = user_book["book"]
     return ReadingEvent(
         id=str(item["id"]),
         event_type=ReadingEventType(item["eventType"]),
         book_id=str(book["id"]),
+        user_book_id=str(user_book["id"]),
         title=book["title"],
         authors=[author["name"] for author in book.get("authors") or []],
         start_date=_parse_datetime(item.get("startDate")),
         end_date=_parse_datetime(item.get("endDate")),
+        percent_read=user_book.get("percentRead"),
+        current_page=user_book.get("currentPageNumber"),
+        page_count=book.get("pageCount"),
     )
