@@ -1,0 +1,42 @@
+# Dependabot opens a pull request when a dependency has a new version. CI (lint, tests, hassfest,
+# HACS validation) runs on each PR, so a green PR is safe to merge. Review and merge them like any
+# other PR; nothing is merged automatically.
+#
+# Docs: https://docs.github.com/en/code-security/dependabot/working-with-dependabot/dependabot-options-reference
+version: 2
+updates:
+  # Python dev dependencies, from pyproject.toml and uv.lock. These are only for development and
+  # CI; users never install them (the integration's runtime requirements are in manifest.json, and
+  # are currently empty).
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    ignore:
+      # Home Assistant is updated through pytest-homeassistant-custom-component instead, which pins
+      # the exact HA release it supports. Bumping homeassistant on its own would pick a release the
+      # test package doesn't support yet, and the update would fail. A
+      # pytest-homeassistant-custom-component PR therefore means "test against a newer HA".
+      - dependency-name: "homeassistant"
+    groups:
+      # ruff and ty in one PR. pytest-homeassistant-custom-component isn't in a group, so it gets
+      # its own PR, which keeps "new Home Assistant" separate from "new lint tools".
+      dev-tools:
+        patterns:
+          - "ruff"
+          - "ty"
+    commit-message:
+      prefix: "deps"
+
+  # Versions of the actions used in .github/workflows/ (actions/checkout, astral-sh/setup-uv).
+  # hassfest and hacs/action follow a branch (@master / @main), so they're always current already.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "ci"
