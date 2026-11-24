@@ -50,12 +50,18 @@ one clears the other.
 
 ## Installation
 
-### HACS (custom repository)
+### Marketplace (recommended)
 
-1. In Home Assistant, open **HACS** (the **Marketplace** from Home Assistant 2026.11).
-2. Open the menu (⋮) → **Custom repositories**.
-3. Add `https://github.com/willschlitzer/ha-jelu` with the type **Integration**.
-4. Find **Jelu** in the list, download it, then restart Home Assistant.
+Jelu is in the Home Assistant Marketplace, which is the HACS catalog built into Home Assistant from 2026.11.
+
+[![Open Jelu in the Marketplace on your Home Assistant.](https://my.home-assistant.io/badges/marketplace_repository.svg)](https://my.home-assistant.io/redirect/marketplace_repository/?owner=willschlitzer&repository=ha-jelu&category=integration)
+
+1. Use the button above, or go to **Settings → Marketplace** and search for **Jelu**.
+2. Select **Install**, check the version shown, then select **Install** again.
+3. The Jelu setup page opens once it's installed; see [Setup](#setup). If Home Assistant asks for a restart, restart it
+   first.
+
+On Home Assistant 2026.10, open **HACS** instead, search for **Jelu**, download it, then restart Home Assistant.
 
 ### Manual
 
@@ -97,6 +103,11 @@ uv run ruff format .   # fix formatting
 
 `scripts/check_auth.py` checks a token against a real server. It reads `JELU_URL` and `JELU_TOKEN` from a
 git-ignored `.env` file and never prints the token.
+
+[Dependabot](.github/dependabot.yml) checks weekly for new versions of the dev dependencies and the GitHub
+Actions, and opens a pull request for each update; CI runs on it, and nothing is merged automatically.
+Home Assistant itself is updated through `pytest-homeassistant-custom-component`, which pins the HA release
+it supports, so a PR for that package means "test against a newer Home Assistant".
 
 ## License
 
